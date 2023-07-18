@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# 파라미터 변수 설정
+plugin_name="$1"
+command="$2"
+
+# 스크립트 경로
+script_path="./src/$plugin_name/$command"
+
+# 스크립트 실행 함수
+execute_script() {
+    script_file="$1"
+    if [ -f "$script_file" ]; then
+        chmod +x "$script_file"
+        "$script_file"
+    else
+        echo "스크립트 파일을 찾을 수 없습니다: $script_file"
+        exit 1
+    fi
+}
+
+# show 함수 정의
+show() {
+    if [ "$command" = "show" ]; then
+        find "./src/$plugin_name" -type f -exec printf "\n---------------------------\n" \; -exec printf "[$plugin_name.$command]" \; -exec printf "\n---------------------------\n" \; -exec cat {} \; -exec printf "\n" \; 
+    else
+        execute_script "$script_path"
+    fi
+}
+
+
+# 파라미터 확인 후 작업 실행
+case "$command" in
+    "install" | "main" | "run" | "stop" | "show")
+        show
+        ;;
+    *)
+        echo "잘못된 파라미터입니다. 사용 가능한 파라미터: install, main, run, stop, show"
+        exit 1
+        ;;
+esac
