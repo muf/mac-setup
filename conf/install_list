@@ -1,6 +1,8 @@
-chrome.sh
 homebrew.sh
+chrome.sh
 iterm.sh
+jdk.sh
+nvm.sh
 vscode.sh
 wget.sh
 zsh.sh

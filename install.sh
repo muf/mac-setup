@@ -8,7 +8,8 @@ echo -e "\n"
 ./conf/chmod.sh
 
 # 실행 가능한 스크립트 목록 생성
-ls "$root_path/src" > $root_path/conf/install_list
+echo "homebrew.sh" >  $root_path/conf/install_list
+ls "$root_path/src" | grep -v "homebrew.sh" >> $root_path/conf/install_list
 
 # todo 파일 생성 (최초 1회)
 cat "$root_path/conf/todo.md" > $root_path/todo.md
