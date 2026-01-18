@@ -14,20 +14,34 @@ install_sdk_package() {
         local install_cmd="sdk install $candidate $version"
     fi
     
-    # 이미 설치되어 있는지 확인
-    local installed_check=$(sdk list $candidate 2>/dev/null | grep -E "installed|local only" | grep -E "$version|$")
-    if [ -n "$installed_check" ] && [ -n "$version" ]; then
-        # 버전이 지정된 경우 해당 버전이 설치되어 있는지 확인
-        if echo "$installed_check" | grep -q "$version"; then
+    # 이미 설치되어 있는지 확인 (sdk list 출력에서 확인)
+    local candidate_list=$(sdk list $candidate 2>/dev/null)
+    
+    if [ -n "$version" ]; then
+        # 버전이 지정된 경우: 해당 버전이 설치되어 있는지 확인
+        # SDKMAN 출력 형식 예시:
+        # " > 3.3.9          | installed  | 3.3.9"
+        # "   3.3.9          | local only | 3.3.9"
+        # " > 3.3.9          |            | 3.3.9" (현재 사용 중)
+        
+        # 현재 사용 중인 버전 (>) 또는 설치된 버전 (installed/local only) 확인
+        local installed_line=$(echo "$candidate_list" | grep -E "^\s*[>|\*]\s+${version}\s+\|" | head -1)
+        local installed_only=$(echo "$candidate_list" | grep -E "^\s+${version}\s+\|\s+(installed|local only)" | head -1)
+        
+        if [ -n "$installed_line" ] || [ -n "$installed_only" ]; then
             echo ">>> $package_name은(는) 이미 설치되어 있습니다."
             return 0
         fi
-    elif [ -z "$version" ]; then
-        # 버전이 지정되지 않은 경우, 이미 설치된 버전이 있는지 확인
-        if echo "$installed_check" | grep -q "installed"; then
-            local installed_version=$(echo "$installed_check" | head -1 | awk '{print $NF}' | tr -d '|' | xargs)
-            echo ">>> $candidate $installed_version은(는) 이미 설치되어 있습니다."
-            return 0
+    else
+        # 버전이 지정되지 않은 경우: 설치된 버전이 있는지 확인
+        local installed_line=$(echo "$candidate_list" | grep -E "^\s*[>|\*]\s+" | head -1)
+        if [ -n "$installed_line" ]; then
+            # 버전 번호 추출 (공백으로 구분된 두 번째 필드)
+            local installed_version=$(echo "$installed_line" | awk '{for(i=1;i<=NF;i++){if($i ~ /^[0-9]/){print $i; break}}}')
+            if [ -n "$installed_version" ]; then
+                echo ">>> $candidate $installed_version은(는) 이미 설치되어 있습니다."
+                return 0
+            fi
         fi
     fi
     
@@ -37,23 +51,47 @@ install_sdk_package() {
     install_output=$($install_cmd < /dev/null 2>&1)
     local install_status=$?
     
-    # 설치 성공 여부 확인 (SDKMAN은 성공 시 0을 반환)
+    # 설치 출력 분석
+    local output_lower=$(echo "$install_output" | tr '[:upper:]' '[:lower:]')
+    
+    # 이미 설치된 경우 확인 (여러 패턴 체크)
+    if echo "$output_lower" | grep -qiE "already installed|이미 설치|is already installed|already have|found in"; then
+        echo ">>> $package_name은(는) 이미 설치되어 있습니다."
+        return 0
+    fi
+    
+    # 설치 실패 확인
+    if echo "$output_lower" | grep -qiE "not available|invalid version|not found|failed|error|실패"; then
+        echo ">>> $package_name 설치에 실패했습니다."
+        return 1
+    fi
+    
+    # 설치 성공 확인
     if [ $install_status -eq 0 ]; then
-        # 설치 성공 메시지 확인
-        if echo "$install_output" | grep -qiE "done|installed|success"; then
-            echo ">>> $package_name 설치 완료."
-            return 0
-        elif echo "$install_output" | grep -qiE "already installed|이미 설치"; then
-            echo ">>> $package_name은(는) 이미 설치되어 있습니다."
-            return 0
+        # 설치 후 다시 확인하여 실제로 설치되었는지 검증
+        if [ -n "$version" ]; then
+            # 잠시 대기 후 목록 갱신
+            sleep 0.5
+            local verify_list=$(sdk list $candidate 2>/dev/null)
+            local verify_line=$(echo "$verify_list" | grep -E "^\s*[>|\*]\s+${version}\s+\|" | head -1)
+            local verify_only=$(echo "$verify_list" | grep -E "^\s+${version}\s+\|\s+(installed|local only)" | head -1)
+            
+            if [ -n "$verify_line" ] || [ -n "$verify_only" ]; then
+                # 새로 설치된 경우
+                echo ">>> $package_name 설치 완료."
+                return 0
+            else
+                # 설치 시도했지만 목록에 없음 - 이미 있었을 가능성
+                echo ">>> $package_name은(는) 이미 설치되어 있습니다."
+                return 0
+            fi
         else
-            # 출력이 없거나 모호한 경우 설치된 것으로 간주
             echo ">>> $package_name 설치 완료."
             return 0
         fi
     else
-        # 설치 실패 확인
-        if echo "$install_output" | grep -qiE "already installed|이미 설치"; then
+        # exit code가 0이 아니지만, 이미 설치된 경우일 수 있음
+        if echo "$output_lower" | grep -qiE "already|이미"; then
             echo ">>> $package_name은(는) 이미 설치되어 있습니다."
             return 0
         else
