@@ -39,15 +39,29 @@ echo ">>> JDK 25를 default로 설정합니다."
 sdk default java 25-tem 2>/dev/null || echo ">>> JDK 25 default 설정에 실패했습니다."
 
 # Maven 설치
-echo ">>> Maven 2 최신 버전 설치 중..."
-sdk install maven 2 2>/dev/null || echo ">>> Maven 2가 이미 설치되어 있거나 설치에 실패했습니다."
+echo ">>> Maven 버전 확인 중..."
+MAVEN_LIST=$(sdk list maven 2>/dev/null)
 
-echo ">>> Maven 3 최신 버전 설치 중..."
-sdk install maven 3 2>/dev/null || echo ">>> Maven 3가 이미 설치되어 있거나 설치에 실패했습니다."
+# Maven 2.x 최신 버전 찾기
+MAVEN_2_VERSION=$(echo "$MAVEN_LIST" | grep -E "^\s*2\.[0-9]" | head -1 | awk '{print $NF}' | tr -d '|' | xargs)
+if [ -n "$MAVEN_2_VERSION" ]; then
+    echo ">>> Maven $MAVEN_2_VERSION 설치 중..."
+    sdk install maven $MAVEN_2_VERSION < /dev/null || echo ">>> Maven $MAVEN_2_VERSION이 이미 설치되어 있거나 설치에 실패했습니다."
+else
+    echo ">>> Maven 2.x 버전을 찾을 수 없습니다."
+fi
 
-# Maven 3를 default로 설정
-echo ">>> Maven 3를 default로 설정합니다."
-sdk default maven 3 2>/dev/null || echo ">>> Maven 3 default 설정에 실패했습니다."
+# Maven 3.x 최신 버전 찾기
+MAVEN_3_VERSION=$(echo "$MAVEN_LIST" | grep -E "^\s*3\.[0-9]" | head -1 | awk '{print $NF}' | tr -d '|' | xargs)
+if [ -n "$MAVEN_3_VERSION" ]; then
+    echo ">>> Maven $MAVEN_3_VERSION 설치 중..."
+    sdk install maven $MAVEN_3_VERSION < /dev/null || echo ">>> Maven $MAVEN_3_VERSION이 이미 설치되어 있거나 설치에 실패했습니다."
+    # Maven 3를 default로 설정
+    echo ">>> Maven $MAVEN_3_VERSION을 default로 설정합니다."
+    sdk default maven $MAVEN_3_VERSION 2>/dev/null || echo ">>> Maven default 설정에 실패했습니다."
+else
+    echo ">>> Maven 3.x 버전을 찾을 수 없습니다."
+fi
 
 # Gradle 최신 major 버전 2개 찾기 및 설치
 echo ">>> Gradle 최신 major 버전 2개 찾는 중..."
@@ -55,30 +69,39 @@ echo ">>> Gradle 최신 major 버전 2개 찾는 중..."
 # SDKMAN에서 사용 가능한 Gradle 버전 목록 가져오기
 GRADLE_LIST=$(sdk list gradle 2>/dev/null)
 
-# Major 버전 추출 (예: 8.9, 9.0 -> 8, 9)
-MAJOR_VERSIONS=$(echo "$GRADLE_LIST" | grep -oE "^\s*[0-9]+\." | sed 's/[^0-9]//g' | sort -n -r | uniq | head -2)
+# 사용 가능한 모든 Gradle 버전 추출 (예: 9.0, 8.9, 8.8 등)
+GRADLE_VERSIONS=$(echo "$GRADLE_LIST" | grep -E "^\s*[0-9]+\.[0-9]" | awk '{print $NF}' | tr -d '|' | xargs | tr ' ' '\n' | sort -V -r)
 
-if [ -n "$MAJOR_VERSIONS" ]; then
-    GRADLE_ARRAY=($MAJOR_VERSIONS)
-    LATEST_MAJOR=${GRADLE_ARRAY[0]}
-    SECOND_MAJOR=${GRADLE_ARRAY[1]}
+if [ -n "$GRADLE_VERSIONS" ]; then
+    # Major 버전별로 그룹화하여 최신 버전 찾기
+    LATEST_MAJOR_NUM=$(echo "$GRADLE_VERSIONS" | head -1 | cut -d. -f1)
+    SECOND_MAJOR_NUM=$(echo "$GRADLE_VERSIONS" | awk -F. '{print $1}' | sort -n -r | uniq | sed -n '2p')
     
-    if [ -n "$SECOND_MAJOR" ] && [ "$SECOND_MAJOR" != "$LATEST_MAJOR" ]; then
-        echo ">>> Gradle $SECOND_MAJOR.x 설치 중..."
-        sdk install gradle $SECOND_MAJOR 2>/dev/null || echo ">>> Gradle $SECOND_MAJOR.x가 이미 설치되어 있거나 설치에 실패했습니다."
+    # 각 major 버전의 최신 버전 찾기
+    LATEST_VERSION=$(echo "$GRADLE_VERSIONS" | grep "^${LATEST_MAJOR_NUM}\." | head -1)
+    
+    if [ -n "$SECOND_MAJOR_NUM" ] && [ "$SECOND_MAJOR_NUM" != "$LATEST_MAJOR_NUM" ]; then
+        SECOND_LATEST_VERSION=$(echo "$GRADLE_VERSIONS" | grep "^${SECOND_MAJOR_NUM}\." | head -1)
+        if [ -n "$SECOND_LATEST_VERSION" ]; then
+            echo ">>> Gradle $SECOND_LATEST_VERSION 설치 중..."
+            sdk install gradle $SECOND_LATEST_VERSION < /dev/null || echo ">>> Gradle $SECOND_LATEST_VERSION이 이미 설치되어 있거나 설치에 실패했습니다."
+        fi
     fi
     
-    if [ -n "$LATEST_MAJOR" ]; then
-        echo ">>> Gradle $LATEST_MAJOR.x 설치 중..."
-        sdk install gradle $LATEST_MAJOR 2>/dev/null || echo ">>> Gradle $LATEST_MAJOR.x가 이미 설치되어 있거나 설치에 실패했습니다."
+    if [ -n "$LATEST_VERSION" ]; then
+        echo ">>> Gradle $LATEST_VERSION 설치 중..."
+        sdk install gradle $LATEST_VERSION < /dev/null || echo ">>> Gradle $LATEST_VERSION이 이미 설치되어 있거나 설치에 실패했습니다."
         # 가장 최신 Gradle을 default로 설정
-        echo ">>> Gradle $LATEST_MAJOR.x를 default로 설정합니다."
-        sdk default gradle $LATEST_MAJOR 2>/dev/null || echo ">>> Gradle default 설정에 실패했습니다."
+        echo ">>> Gradle $LATEST_VERSION을 default로 설정합니다."
+        sdk default gradle $LATEST_VERSION 2>/dev/null || echo ">>> Gradle default 설정에 실패했습니다."
     fi
 else
     echo ">>> Gradle 버전을 찾을 수 없습니다. 최신 버전을 설치합니다."
-    sdk install gradle 2>/dev/null || echo ">>> Gradle 설치에 실패했습니다."
-    sdk default gradle 2>/dev/null || echo ">>> Gradle default 설정에 실패했습니다."
+    sdk install gradle < /dev/null || echo ">>> Gradle 설치에 실패했습니다."
+    INSTALLED_GRADLE=$(sdk list gradle | grep "installed" | head -1 | awk '{print $NF}' | tr -d '|' | xargs)
+    if [ -n "$INSTALLED_GRADLE" ]; then
+        sdk default gradle $INSTALLED_GRADLE 2>/dev/null || echo ">>> Gradle default 설정에 실패했습니다."
+    fi
 fi
 
 echo ">>> JDK/Maven/Gradle 설치가 완료되었습니다."
